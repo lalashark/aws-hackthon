@@ -1,0 +1,92 @@
+version: "3.9"
+
+services:
+  redis:
+    image: redis:7.2-alpine
+    ports:
+      - "6379:6379"
+    networks:
+      - agnet
+
+  master-agent:
+    build:
+      context: .
+      dockerfile: master-agent/Dockerfile
+    environment:
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+    ports:
+      - "8000:8000"
+    depends_on:
+      - redis
+    networks:
+      - agnet
+
+  worker-a:
+    build:
+      context: .
+      dockerfile: agents/worker-a/Dockerfile
+    environment:
+      - AGENT_ID=worker-a
+      - CAPABILITIES=["analyze"]
+      - PROMPT_PATH=/app/agents/worker-a/config/prompt_analyze.txt
+      - CALLBACK_URL=http://master-agent:8000/result
+      - MASTER_URL=http://master-agent:8000
+      - AG2_PROFILE=worker-analyze
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - PUBLIC_URL=http://worker-a:5000
+    ports:
+      - "5001:5000"
+    depends_on:
+      - redis
+      - master-agent
+    networks:
+      - agnet
+
+  worker-b:
+    build:
+      context: .
+      dockerfile: agents/worker-b/Dockerfile
+    environment:
+      - AGENT_ID=worker-b
+      - CAPABILITIES=["summarize"]
+      - PROMPT_PATH=/app/agents/worker-b/config/prompt_summarize.txt
+      - CALLBACK_URL=http://master-agent:8000/result
+      - MASTER_URL=http://master-agent:8000
+      - AG2_PROFILE=worker-summarize
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - PUBLIC_URL=http://worker-b:5000
+    ports:
+      - "5002:5000"
+    depends_on:
+      - redis
+      - master-agent
+    networks:
+      - agnet
+
+  worker-c:
+    build:
+      context: .
+      dockerfile: agents/worker-c/Dockerfile
+    environment:
+      - AGENT_ID=worker-c
+      - CAPABILITIES=["evaluate"]
+      - PROMPT_PATH=/app/agents/worker-c/config/prompt_evaluate.txt
+      - CALLBACK_URL=http://master-agent:8000/result
+      - MASTER_URL=http://master-agent:8000
+      - AG2_PROFILE=worker-evaluate
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - PUBLIC_URL=http://worker-c:5000
+    ports:
+      - "5003:5000"
+    depends_on:
+      - redis
+      - master-agent
+    networks:
+      - agnet
+
+networks:
+  agnet:
