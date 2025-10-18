@@ -1,18 +1,19 @@
 ## Sub Agent Specification v0.2
 
 ### 1. Objective
-Define the unified structure and deployment plan for the three Sub Agents (worker-a, worker-b, worker-c) in the AG2-based multi-agent system. Each worker bundles an AG2 runtime but shares the same codebase and architecture, differing only in its system prompt and declared capability.
+Define the unified structure and deployment plan for the core Sub Agents (worker-a, worker-b, worker-c) 與可熱插拔的 Finalizer (worker-d) in the AG2-based multi-agent system. 每個 worker 共用同一套程式骨架與 LLM Gateway 客戶端，僅透過系統提示詞與能力宣告來區分職責。
 
 ---
 
 ### 2. Overview
 | Component | Description |
 |------------|-------------|
-| worker-a | Analytical agent that identifies patterns or insights in structured/unstructured data, backed by an embedded AG2 tool stack. |
-| worker-b | Summarization agent that extracts key points and presents concise summaries, backed by an embedded AG2 tool stack. |
-| worker-c | Evaluation agent that reviews and scores results for quality and correctness, backed by an embedded AG2 tool stack. |
+| worker-a | Analyzer：解析使用者意圖、提煉需求重點。 |
+| worker-b | Retriever：根據需求檢索可用資料或候選方案。 |
+| worker-c | Evaluator：評估候選項目、提供排序與理由。 |
+| worker-d | Finalizer（可選）：彙整前面結果並生成最終自然語言輸出。 |
 
-All three agents share identical runtime structure, Dockerfile, AG2 integration, and API interfaces.
+四個 agents 共享相同的 runtime 結構、Dockerfile、LLM Gateway 整合與 API 介面。
 
 ---
 
@@ -20,7 +21,7 @@ All three agents share identical runtime structure, Dockerfile, AG2 integration,
 | File | Role | Shared |
 |------|------|--------|
 | `base_agent.py` | Defines BaseAgent class and bridges FastAPI endpoints to the worker's AG2 agent | ✅ |
-| `ag2_runtime.py` | Boots the embedded AG2 agent, registers tools, wraps ReliableTool policies | ✅ |
+| `ag2_runtime.py` | 透過 LLM Gateway 呼叫指定模型（Gemini / Bedrock / Mock），並封裝輸入/輸出格式 | ✅ |
 | `main.py` | Launches FastAPI app, loads prompt, and runs BaseAgent | ✅ |
 | `config/prompt_*.txt` | Defines each agent’s system prompt | ❌ |
 | `Dockerfile` | Common build and run configuration | ✅ |
@@ -45,16 +46,25 @@ agents/
 │   ├── main.py
 │   ├── ag2_runtime.py
 │   ├── config/
-│   │   └── prompt_summarize.txt
+│   │   └── prompt_retrieve.txt
 │   ├── Dockerfile
 │   └── requirements.txt
 │
-└── worker-c/
+├── worker-c/
+│   ├── base_agent.py
+│   ├── main.py
+│   ├── ag2_runtime.py
+│   ├── config/
+│   │   └── prompt_evaluate.txt
+│   ├── Dockerfile
+│   └── requirements.txt
+│
+└── worker-d/
     ├── base_agent.py
     ├── main.py
     ├── ag2_runtime.py
     ├── config/
-    │   └── prompt_evaluate.txt
+    │   └── prompt_finalize.txt
     ├── Dockerfile
     └── requirements.txt
 ```
@@ -101,8 +111,9 @@ agents/
 | Agent | Prompt File | System Prompt Summary |
 |--------|--------------|--------------------------|
 | worker-a | `prompt_analyze.txt` | "You are an analytical assistant that identifies patterns and insights in structured or unstructured data." |
-| worker-b | `prompt_summarize.txt` | "You summarize information concisely and coherently, focusing on key ideas and logical flow." |
+| worker-b | `prompt_retrieve.txt` | "You retrieve relevant information, candidates, or facts that match the extracted intent." |
 | worker-c | `prompt_evaluate.txt` | "You critically evaluate responses, judging correctness, clarity, and completeness with a confidence score." |
+| worker-d | `prompt_finalize.txt` | "You synthesize prior stage outputs into a friendly, actionable final recommendation." |
 
 ---
 
@@ -137,10 +148,10 @@ services:
     build: ./agents/worker-b
     environment:
       - AGENT_ID=worker-b
-      - CAPABILITIES=["summarize"]
-      - PROMPT_PATH=/app/config/prompt_summarize.txt
+      - CAPABILITIES=["retrieve"]
+      - PROMPT_PATH=/app/config/prompt_retrieve.txt
       - CALLBACK_URL=http://master-agent:8000/result
-      - AG2_PROFILE=worker-summarize
+      - LLM_GATEWAY_URL=http://llm-gateway:7000
     ports:
       - "5002:5000"
 
@@ -151,9 +162,20 @@ services:
       - CAPABILITIES=["evaluate"]
       - PROMPT_PATH=/app/config/prompt_evaluate.txt
       - CALLBACK_URL=http://master-agent:8000/result
-      - AG2_PROFILE=worker-evaluate
+      - LLM_GATEWAY_URL=http://llm-gateway:7000
     ports:
       - "5003:5000"
+
+  worker-d:
+    build: ./agents/worker-d
+    environment:
+      - AGENT_ID=worker-d
+      - CAPABILITIES=["finalize"]
+      - PROMPT_PATH=/app/config/prompt_finalize.txt
+      - CALLBACK_URL=http://master-agent:8000/result
+      - LLM_GATEWAY_URL=http://llm-gateway:7000
+    ports:
+      - "5004:5000"
 ```
 
 ---
@@ -174,14 +196,14 @@ POST /result → Master collects and stores in Redis
 ---
 
 ### 12. Design Summary
-- All sub agents share an identical code and deployment structure, each bundling its own AG2 runtime profile.
-- Only the system prompt, declared capability, and `AG2_PROFILE` differ across workers.
-- Simplifies container orchestration and scaling while keeping AG2 customization per worker lightweight.
-- Future AG2 orchestration will control workflow logic; sub agents expose AG2 traces yet remain stateless at the HTTP boundary.
+- 所有 workers 共用基底程式，透過環境變數調整能力、提示詞與 LLM provider。
+- Worker-A/B/C 為固定管線，Worker-D 作為可動態加入的 Finalizer；在 routing 模式下仍可依能力單獨調度。
+- LLM Gateway 集中管理 Gemini / Bedrock / Mock 呼叫，Workers 只需組裝 prompt 與輸入資料。
+- Redis 持續儲存結果、心跳與路由資訊，使 Master 能即時感知 Worker 的加入與離線。
 
 ---
 
-### 13. AG2 Integration Notes
-- Workers launch an AG2 agent during startup, configured via `AG2_PROFILE` to load prompts, tools, and ReliableTool policies.
-- Sub agents attach AG2 execution traces to `/result` payloads and persist them under `ag2:trace:<task_id>:<agent>` in Redis.
-- Local retries, validation, and tool invocation flows are handled inside each worker to shield the master from transient errors.
+### 13. LLM / Pipeline Integration Notes
+- Workers 於啟動時載入對應 prompt，並透過 LLM Gateway 呼叫指定 provider；若切換至 Bedrock 只需調整 Gateway 環境設定。
+- Pipeline 模式會使用同步 `reply_mode`，使 Master 能在 Worker 執行完畢後立即將結果送往下一階段；routing 模式仍沿用非同步 callback。
+- Worker-D 的加入/離線只會更新 Redis `routing`，Master 會在下一次任務自動偵測是否需要加入 Finalizer。

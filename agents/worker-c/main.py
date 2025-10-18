@@ -10,6 +10,7 @@ import httpx
 import redis.asyncio as redis
 from fastapi import FastAPI
 
+from shared.llm_gateway_client import build_llm_gateway_client
 from shared.schemas import WorkRequest
 
 from .ag2_runtime import AG2Runtime
@@ -38,10 +39,14 @@ def build_agent() -> BaseAgent:
         redis_port=int(os.getenv("REDIS_PORT", "6379")),
         public_url=public_url,
     )
-    runtime = AG2Runtime(profile=config.ag2_profile, prompt=prompt_text)
+    runtime = AG2Runtime(
+        profile=config.ag2_profile,
+        prompt=prompt_text,
+        llm_client=build_llm_gateway_client(),
+    )
     redis_client = redis.Redis(host=config.redis_host, port=config.redis_port, decode_responses=False)
     http_client = httpx.AsyncClient()
-    return BaseAgent(config=config, runtime_execute=runtime.execute, redis_client=redis_client, http_client=http_client)
+    return BaseAgent(config=config, runtime=runtime, redis_client=redis_client, http_client=http_client)
 
 
 @app.on_event("startup")

@@ -1,4 +1,4 @@
-"""FastAPI entrypoint for worker-a."""
+"""FastAPI entrypoint for worker-d (finalizer)."""
 
 from __future__ import annotations
 
@@ -16,24 +16,24 @@ from shared.schemas import WorkRequest
 from .ag2_runtime import AG2Runtime
 from .base_agent import AgentConfig, BaseAgent
 
-app = FastAPI(title="Worker A", version="0.1.0")
+app = FastAPI(title="Worker D", version="0.1.0")
 
 
 def build_agent() -> BaseAgent:
-    prompt_path = Path(os.getenv("PROMPT_PATH", "/app/config/prompt_analyze.txt"))
+    prompt_path = Path(os.getenv("PROMPT_PATH", "/app/config/prompt_finalize.txt"))
     prompt_text = prompt_path.read_text(encoding="utf-8")
     capabilities = [
         cap.strip()
-        for cap in json.loads(os.getenv("CAPABILITIES", "[\"analyze\"]"))
+        for cap in json.loads(os.getenv("CAPABILITIES", "[\"finalize\"]"))
         if cap.strip()
     ]
     public_url = os.getenv("PUBLIC_URL")
     config = AgentConfig(
-        agent_id=os.getenv("AGENT_ID", "worker-a"),
+        agent_id=os.getenv("AGENT_ID", "worker-d"),
         capabilities=capabilities,
         callback_url=os.getenv("CALLBACK_URL", "http://master-agent:8000/result"),
         master_url=os.getenv("MASTER_URL", "http://master-agent:8000"),
-        ag2_profile=os.getenv("AG2_PROFILE", "worker-analyze"),
+        ag2_profile=os.getenv("AG2_PROFILE", "worker-finalize"),
         prompt_path=prompt_path,
         redis_host=os.getenv("REDIS_HOST", "redis"),
         redis_port=int(os.getenv("REDIS_PORT", "6379")),
@@ -70,3 +70,4 @@ async def health() -> dict[str, str]:
 async def work_endpoint(request: WorkRequest):
     agent: BaseAgent = app.state.agent
     return await agent.handle_work(request)
+

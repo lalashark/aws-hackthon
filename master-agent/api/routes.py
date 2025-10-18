@@ -27,7 +27,7 @@ def get_dispatcher():
     raise NotImplementedError("Dispatcher dependency must be wired in main.py")
 
 
-@router.post("/task", response_model=DecompositionResponse, status_code=status.HTTP_202_ACCEPTED)
+@router.post("/task", status_code=status.HTTP_202_ACCEPTED)
 async def receive_task(payload: TaskObjective, dispatcher=Depends(get_dispatcher)):
     """Entry point for new tasks. Returns structured decomposition preview."""
     if dispatcher is None:
@@ -37,7 +37,10 @@ async def receive_task(payload: TaskObjective, dispatcher=Depends(get_dispatcher
                 code=ErrorCode.INTERNAL_ERROR, message="Dispatcher not configured."
             ).model_dump(),
         )
-    return await dispatcher.handle_task(payload)
+    result = await dispatcher.handle_task(payload)
+    if hasattr(result, "model_dump"):
+        return result.model_dump()
+    return result
 
 
 @router.post("/dispatch", response_model=RouteDecision)
@@ -77,4 +80,3 @@ async def register_agent(payload: CapabilityDeclaration, dispatcher=Depends(get_
         )
     await dispatcher.register_agent(payload)
     return {"status": "accepted"}
-

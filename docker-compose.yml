@@ -15,10 +15,24 @@ services:
     environment:
       - REDIS_HOST=redis
       - REDIS_PORT=6379
+      - MASTER_MODE=pipeline
+      - LLM_GATEWAY_URL=http://llm-gateway:7000
     ports:
       - "8000:8000"
     depends_on:
       - redis
+      - llm-gateway
+    networks:
+      - agnet
+
+  llm-gateway:
+    build:
+      context: .
+      dockerfile: llm-gateway/Dockerfile
+    environment:
+      - LLM_PROVIDER=mock
+    ports:
+      - "7000:7000"
     networks:
       - agnet
 
@@ -36,6 +50,8 @@ services:
       - REDIS_HOST=redis
       - REDIS_PORT=6379
       - PUBLIC_URL=http://worker-a:5000
+      - LLM_GATEWAY_URL=http://llm-gateway:7000
+      - LLM_PROVIDER=mock
     ports:
       - "5001:5000"
     depends_on:
@@ -50,14 +66,16 @@ services:
       dockerfile: agents/worker-b/Dockerfile
     environment:
       - AGENT_ID=worker-b
-      - CAPABILITIES=["summarize"]
-      - PROMPT_PATH=/app/agents/worker-b/config/prompt_summarize.txt
+      - CAPABILITIES=["retrieve"]
+      - PROMPT_PATH=/app/agents/worker-b/config/prompt_retrieve.txt
       - CALLBACK_URL=http://master-agent:8000/result
       - MASTER_URL=http://master-agent:8000
-      - AG2_PROFILE=worker-summarize
+      - AG2_PROFILE=worker-retrieve
       - REDIS_HOST=redis
       - REDIS_PORT=6379
       - PUBLIC_URL=http://worker-b:5000
+      - LLM_GATEWAY_URL=http://llm-gateway:7000
+      - LLM_PROVIDER=mock
     ports:
       - "5002:5000"
     depends_on:
@@ -80,11 +98,38 @@ services:
       - REDIS_HOST=redis
       - REDIS_PORT=6379
       - PUBLIC_URL=http://worker-c:5000
+      - LLM_GATEWAY_URL=http://llm-gateway:7000
+      - LLM_PROVIDER=mock
     ports:
       - "5003:5000"
     depends_on:
       - redis
       - master-agent
+    networks:
+      - agnet
+
+  worker-d:
+    build:
+      context: .
+      dockerfile: agents/worker-d/Dockerfile
+    environment:
+      - AGENT_ID=worker-d
+      - CAPABILITIES=["finalize"]
+      - PROMPT_PATH=/app/agents/worker-d/config/prompt_finalize.txt
+      - CALLBACK_URL=http://master-agent:8000/result
+      - MASTER_URL=http://master-agent:8000
+      - AG2_PROFILE=worker-finalize
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - PUBLIC_URL=http://worker-d:5000
+      - LLM_GATEWAY_URL=http://llm-gateway:7000
+      - LLM_PROVIDER=mock
+    ports:
+      - "5004:5000"
+    depends_on:
+      - redis
+      - master-agent
+      - llm-gateway
     networks:
       - agnet
 

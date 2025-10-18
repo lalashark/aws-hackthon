@@ -106,6 +106,7 @@ class WorkRequest(BaseModel):
     data: dict[str, Any] = Field(default_factory=dict)
     context: dict[str, Any] = Field(default_factory=dict)
     priority: Literal["low", "normal", "high"] = "normal"
+    reply_mode: Literal["async", "sync"] = "async"
 
 
 class ExecutionStatus(str, Enum):
@@ -152,3 +153,22 @@ class DispatchLogEntry(BaseModel):
     status: ExecutionStatus | None = None
     error_code: ErrorCode | None = None
     created_at: datetime
+
+
+class PipelineStageResult(BaseModel):
+    """Represents the output of a single pipeline stage."""
+
+    stage: str
+    agent_id: str
+    sub_id: str
+    status: ExecutionStatus
+    output: dict[str, Any]
+    error: ErrorResponse | None = None
+
+
+class PipelineResponse(BaseModel):
+    """Aggregated response when executing the pipeline strategy."""
+
+    task_id: str
+    stages: list[PipelineStageResult]
+    final_output: dict[str, Any] | None = None

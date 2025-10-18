@@ -14,6 +14,7 @@ from .ag2_controller.decomposer import MasterDecomposer
 from .api import routes
 from .core.dispatcher import Dispatcher
 from .core.memory import RedisMemoryAdapter
+from .core.pipeline import PipelineOrchestrator
 from .core.routing import RoutingService
 
 
@@ -33,11 +34,17 @@ def build_app() -> FastAPI:
         router=AdaptiveRouterAgent(metrics_provider=memory),
     )
     http_client = httpx.AsyncClient()
+    mode = os.getenv("MASTER_MODE", "routing").lower()
+    pipeline = None
+    if mode == "pipeline":
+        pipeline = PipelineOrchestrator(routing=routing_service, memory=memory, http_client=http_client)
     dispatcher = Dispatcher(
         controller=controller,
         routing=routing_service,
         memory=memory,
         http_client=http_client,
+        mode=mode,
+        pipeline=pipeline,
     )
 
     app.include_router(routes.router)

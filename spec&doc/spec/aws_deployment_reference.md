@@ -55,9 +55,11 @@
 | 服務 | 映像 | CPU/記憶體 | 域名/Port | 重要環境變數 |
 |------|------|------------|-----------|--------------|
 | master-agent | `aws_account.dkr.ecr.<region>.amazonaws.com/aws-hackthon/master-agent:latest` | 0.5 vCPU / 1GB | 8000 | `REDIS_HOST=<redis-endpoint>`, `REDIS_PORT=6379` |
-| worker-a | `.../worker-a:latest` | 0.25 vCPU / 0.5GB | 5000 | `AGENT_ID=worker-a`, `MASTER_URL=http://master.internal:8000`, `CALLBACK_URL=http://master.internal:8000/result` |
-| worker-b | 同上 | 0.25 vCPU / 0.5GB | 5000 | `AGENT_ID=worker-b`, `CAPABILITIES=["summarize"]` |
-| worker-c | 同上 | 0.25 vCPU / 0.5GB | 5000 | `AGENT_ID=worker-c`, `CAPABILITIES=["evaluate"]` |
+| llm-gateway | `.../llm-gateway:latest` | 0.25 vCPU / 0.5GB | 7000 | `LLM_PROVIDER`, `GEMINI_API_KEY` 或 `AWS_REGION` |
+| worker-a | `.../worker-a:latest` | 0.25 vCPU / 0.5GB | 5000 | `AGENT_ID=worker-a`, `MASTER_URL=http://master.internal:8000`, `LLM_GATEWAY_URL=http://llm-gateway.internal:7000` |
+| worker-b | 同上 | 0.25 vCPU / 0.5GB | 5000 | `AGENT_ID=worker-b`, `CAPABILITIES=["retrieve"]`, `LLM_GATEWAY_URL=...` |
+| worker-c | 同上 | 0.25 vCPU / 0.5GB | 5000 | `AGENT_ID=worker-c`, `CAPABILITIES=["evaluate"]`, `LLM_GATEWAY_URL=...` |
+| worker-d (optional) | 同上 | 0.25 vCPU / 0.5GB | 5000 | `AGENT_ID=worker-d`, `CAPABILITIES=["finalize"]`, `LLM_GATEWAY_URL=...` |
 
 - **Service Discovery**：建議使用 AWS Cloud Map 或內部 ALB 讓 Master 與 Workers 透過 DNS 尋址（例如 `worker-a.service.local`）。
 - **Scaling Policy**：  
@@ -98,7 +100,7 @@
 ### 9. 成本估算（示例）
 | 項目 | 假設 | 月費估算 (USD) |
 |------|------|----------------|
-| ECS Fargate | master 1 task、workers 共 3 task，0.5 vCPU/1GB | ~90 |
+| ECS Fargate | master 1 task、gateway 1 task、workers 4 task，0.25~0.5 vCPU | ~130 |
 | ElastiCache Redis | cache.t4g.small (單節點) | ~35 |
 | ALB | 低流量（50GB/月） | ~25 |
 | NAT Gateway | 單 AZ | ~32 |
@@ -112,4 +114,3 @@
 - 正式環境需考慮多區域容錯、災難復原（跨 AZ ElastiCache、ECS multi-AZ）。  
 
 以上部署建議僅供參考，可依實際需求調整。丟到 `spec&doc/spec` 目錄便於搭配其他規格文件一併檢視。
-

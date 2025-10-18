@@ -12,6 +12,7 @@ from shared.schemas import (
     CapabilityDeclaration,
     DecompositionResponse,
     DispatchLogEntry,
+    PipelineResponse,
     ResultPayload,
     RouteDecision,
     SubTask,
@@ -21,6 +22,7 @@ from shared.schemas import (
 
 from ..ag2_controller.controller import AG2Controller
 from .memory import MemoryAdapter
+from .pipeline import PipelineOrchestrator
 from .routing import RoutingService
 
 
@@ -32,11 +34,17 @@ class Dispatcher:
     routing: RoutingService
     memory: MemoryAdapter
     http_client: httpx.AsyncClient
+    mode: str = "routing"
+    pipeline: PipelineOrchestrator | None = None
 
-    async def handle_task(self, payload: TaskObjective) -> DecompositionResponse:
+    async def handle_task(self, payload: TaskObjective) -> DecompositionResponse | PipelineResponse:
         capabilities = await self.routing.list_capabilities()
         decomposition = await self.controller.decompose_task(payload, capabilities)
         await self.memory.store_subtasks(decomposition.subtasks)
+        if self.mode == "pipeline":
+            if self.pipeline is None:
+                raise RuntimeError("Pipeline orchestrator not configured")
+            return await self.pipeline.run(payload)
         return decomposition
 
     async def register_agent(self, declaration: CapabilityDeclaration) -> None:
@@ -74,7 +82,7 @@ class Dispatcher:
         target_url = str(declaration.url).rstrip("/")
         response = await self.http_client.post(
             f"{target_url}/work",
-            json=work.model_dump(),
+            json=work.model_dump(mode="json"),
             timeout=30,
         )
         response.raise_for_status()

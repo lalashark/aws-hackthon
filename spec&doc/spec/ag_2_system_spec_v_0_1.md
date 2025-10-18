@@ -24,7 +24,7 @@ This specification defines the overall architecture of the AG2 multi-agent Proof
 |                                                              |
 |   +---------------------+  +---------------------+            |
 |   |      Worker-A       |  |      Worker-B       |            |
-|   |  Capability: analyze|  | Capability: summarize|           |
+|   | Capability: analyze |  | Capability: retrieve|            |
 |   +---------------------+  +---------------------+            |
 |                \\             /                               |
 |                 \\           /                                |
@@ -32,6 +32,15 @@ This specification defines the overall architecture of the AG2 multi-agent Proof
 |                 |      Worker-C       |                       |
 |                 | Capability: evaluate|                       |
 |                 +---------------------+                       |
+|                          |                                    |
+|                          ↓                                    |
+|                   (Optional) Worker-D                         |
+|                   Capability: finalize                        |
+|                          |                                    |
+|                          ↓                                    |
+|                     LLM Gateway                               |
+|                   - Gemini / Bedrock                          |
+|                   - Mock provider                             |
 |                          |                                    |
 |                          ↓                                    |
 |                   Redis Memory Layer                         |
@@ -65,10 +74,12 @@ This specification defines the overall architecture of the AG2 multi-agent Proof
 ### 6. Container Summary
 | Container | Role | Port | Depends On | Key Environment Variables |
 |------------|------|------|-------------|-----------------------------|
-| **master-agent** | Controller | 8000 | redis | `REDIS_HOST=redis`, `AG2_MODE=controller` |
-| **worker-a** | Analytical agent | 5001 | redis | `AGENT_ID=worker-a`, `CAPABILITIES=["analyze"]`, `PROMPT_PATH=/app/config/prompt_analyze.txt`, `AG2_PROFILE=worker-analyze` |
-| **worker-b** | Summarization agent | 5002 | redis | `AGENT_ID=worker-b`, `CAPABILITIES=["summarize"]`, `PROMPT_PATH=/app/config/prompt_summarize.txt`, `AG2_PROFILE=worker-summarize` |
-| **worker-c** | Evaluation agent | 5003 | redis | `AGENT_ID=worker-c`, `CAPABILITIES=["evaluate"]`, `PROMPT_PATH=/app/config/prompt_evaluate.txt`, `AG2_PROFILE=worker-evaluate` |
+| **master-agent** | Controller (routing / pipeline) | 8000 | redis, llm-gateway | `REDIS_HOST=redis`, `MASTER_MODE`, `LLM_GATEWAY_URL` |
+| **llm-gateway** | LLM abstraction (Gemini / Bedrock / Mock) | 7000 | — | `LLM_PROVIDER`, `GEMINI_API_KEY`, `AWS_REGION` |
+| **worker-a** | Analyzer | 5001 | redis, llm-gateway | `AGENT_ID=worker-a`, `CAPABILITIES=["analyze"]`, `PROMPT_PATH=/app/config/prompt_analyze.txt`, `LLM_GATEWAY_URL` |
+| **worker-b** | Retriever | 5002 | redis, llm-gateway | `AGENT_ID=worker-b`, `CAPABILITIES=["retrieve"]`, `PROMPT_PATH=/app/config/prompt_retrieve.txt` |
+| **worker-c** | Evaluator | 5003 | redis, llm-gateway | `AGENT_ID=worker-c`, `CAPABILITIES=["evaluate"]`, `PROMPT_PATH=/app/config/prompt_evaluate.txt` |
+| **worker-d** | Finalizer (hot plug) | 5004 | redis, llm-gateway | `AGENT_ID=worker-d`, `CAPABILITIES=["finalize"]`, `PROMPT_PATH=/app/config/prompt_finalize.txt` |
 | **redis** | Shared memory layer | 6379 | — | — |
 
 ---
@@ -100,43 +111,66 @@ services:
     build: ./master
     ports:
       - "8000:8000"
-    depends_on: [redis]
+    depends_on: [redis, llm-gateway]
+    environment:
+      - MASTER_MODE=pipeline
+      - LLM_GATEWAY_URL=http://llm-gateway:7000
+    networks: [agnet]
+
+  llm-gateway:
+    build: ./llm-gateway
+    ports:
+      - "7000:7000"
+    environment:
+      - LLM_PROVIDER=mock
     networks: [agnet]
 
   worker-a:
     build: ./agents/worker-a
     ports:
       - "5001:5000"
-    depends_on: [redis]
+    depends_on: [redis, master-agent, llm-gateway]
     environment:
       - AGENT_ID=worker-a
       - CAPABILITIES=["analyze"]
       - PROMPT_PATH=/app/config/prompt_analyze.txt
-      - AG2_PROFILE=worker-analyze
+      - LLM_GATEWAY_URL=http://llm-gateway:7000
     networks: [agnet]
 
   worker-b:
     build: ./agents/worker-b
     ports:
       - "5002:5000"
-    depends_on: [redis]
+    depends_on: [redis, master-agent, llm-gateway]
     environment:
       - AGENT_ID=worker-b
-      - CAPABILITIES=["summarize"]
-      - PROMPT_PATH=/app/config/prompt_summarize.txt
-      - AG2_PROFILE=worker-summarize
+      - CAPABILITIES=["retrieve"]
+      - PROMPT_PATH=/app/config/prompt_retrieve.txt
+      - LLM_GATEWAY_URL=http://llm-gateway:7000
     networks: [agnet]
 
   worker-c:
     build: ./agents/worker-c
     ports:
       - "5003:5000"
-    depends_on: [redis]
+    depends_on: [redis, master-agent, llm-gateway]
     environment:
       - AGENT_ID=worker-c
       - CAPABILITIES=["evaluate"]
       - PROMPT_PATH=/app/config/prompt_evaluate.txt
-      - AG2_PROFILE=worker-evaluate
+      - LLM_GATEWAY_URL=http://llm-gateway:7000
+    networks: [agnet]
+
+  worker-d:
+    build: ./agents/worker-d
+    ports:
+      - "5004:5000"
+    depends_on: [redis, master-agent, llm-gateway]
+    environment:
+      - AGENT_ID=worker-d
+      - CAPABILITIES=["finalize"]
+      - PROMPT_PATH=/app/config/prompt_finalize.txt
+      - LLM_GATEWAY_URL=http://llm-gateway:7000
     networks: [agnet]
 
 networks:

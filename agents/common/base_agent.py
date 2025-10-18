@@ -5,7 +5,6 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-from collections.abc import Awaitable, Callable
 from contextlib import suppress
 from dataclasses import dataclass, field
 from typing import Any
@@ -24,6 +23,7 @@ from shared.schemas import (
 )
 
 from .config import AgentConfig
+from .ag2_runtime import AG2Runtime
 
 logger = logging.getLogger(__name__)
 
@@ -33,7 +33,7 @@ class BaseAgent:
     """Handles registration, heartbeats, task execution, and callbacks."""
 
     config: AgentConfig
-    runtime_execute: Callable[[WorkRequest], Awaitable[dict[str, Any]]]
+    runtime: AG2Runtime
     redis_client: redis.Redis
     http_client: httpx.AsyncClient
     _heartbeat_task: asyncio.Task | None = field(init=False, default=None)
@@ -59,7 +59,7 @@ class BaseAgent:
         logger.info("Received work: task=%s sub=%s command=%s", request.task_id, request.sub_id, request.command)
         self._inflight.add(request.sub_id)
         try:
-            output = await self.runtime_execute(request)
+            output = await self.runtime.execute(request, self.http_client)
             payload = ResultPayload(
                 task_id=request.task_id,
                 sub_id=request.sub_id,
@@ -87,6 +87,10 @@ class BaseAgent:
             )
         finally:
             self._inflight.discard(request.sub_id)
+        if request.reply_mode == "sync":
+            # In synchronous mode we return the payload directly and skip callback delivery.
+            return self._format_sync_response(payload)
+
         asyncio.create_task(self._post_result(payload))
         return {"status": "accepted"}
 
@@ -162,3 +166,15 @@ class BaseAgent:
 
     def _load_factor(self) -> float:
         return min(len(self._inflight) / 5.0, 1.0)
+
+    @staticmethod
+    def _format_sync_response(payload: ResultPayload) -> dict[str, Any]:
+        body = payload.model_dump(mode="json")
+        return {
+            "status": payload.status.value,
+            "agent_id": payload.agent_id,
+            "task_id": payload.task_id,
+            "sub_id": payload.sub_id,
+            "output": body.get("output"),
+            "error": body.get("error"),
+        }
