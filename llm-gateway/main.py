@@ -69,7 +69,9 @@ def _ensure_bedrock() -> Any:
 
 def _invoke_gemini(system_prompt: str, user_prompt: str) -> tuple[str, dict[str, Any]]:
     _ensure_gemini()
-    model_name = os.getenv("GEMINI_MODEL", "gemini-pro")
+    model_name = os.getenv("GEMINI_MODEL", "models/gemini-2.5-flash")
+    if "/" not in model_name:
+        model_name = f"models/{model_name}"
     model = genai.GenerativeModel(model_name)
     response = model.generate_content([system_prompt, user_prompt])
     text = getattr(response, "text", None)
