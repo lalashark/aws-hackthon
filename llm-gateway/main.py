@@ -69,7 +69,7 @@ def _ensure_bedrock() -> Any:
 
 def _invoke_gemini(system_prompt: str, user_prompt: str) -> tuple[str, dict[str, Any]]:
     _ensure_gemini()
-    model_name = os.getenv("GEMINI_MODEL", "gemini-1.5-flash")
+    model_name = os.getenv("GEMINI_MODEL", "gemini-pro")
     model = genai.GenerativeModel(model_name)
     response = model.generate_content([system_prompt, user_prompt])
     text = getattr(response, "text", None)
@@ -130,4 +130,3 @@ async def generate(request: GenerateRequest) -> GenerateResponse:
 @app.get("/health")
 async def health() -> dict[str, str]:
     return {"status": "ok"}
-

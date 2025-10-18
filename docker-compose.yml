@@ -15,8 +15,8 @@ services:
     environment:
       - REDIS_HOST=redis
       - REDIS_PORT=6379
-      - MASTER_MODE=pipeline
-      - LLM_GATEWAY_URL=http://llm-gateway:7000
+      - MASTER_MODE=${MASTER_MODE:-pipeline}
+      - LLM_GATEWAY_URL=${LLM_GATEWAY_URL:-http://llm-gateway:7000}
     ports:
       - "8000:8000"
     depends_on:
@@ -30,7 +30,10 @@ services:
       context: .
       dockerfile: llm-gateway/Dockerfile
     environment:
-      - LLM_PROVIDER=mock
+      - LLM_PROVIDER=${LLM_PROVIDER:-mock}
+      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
+      - AWS_REGION=${AWS_REGION:-}
+      - BEDROCK_MODEL_ID=${BEDROCK_MODEL_ID:-}
     ports:
       - "7000:7000"
     networks:
@@ -50,8 +53,8 @@ services:
       - REDIS_HOST=redis
       - REDIS_PORT=6379
       - PUBLIC_URL=http://worker-a:5000
-      - LLM_GATEWAY_URL=http://llm-gateway:7000
-      - LLM_PROVIDER=mock
+      - LLM_GATEWAY_URL=${LLM_GATEWAY_URL:-http://llm-gateway:7000}
+      - LLM_PROVIDER=${LLM_PROVIDER:-mock}
     ports:
       - "5001:5000"
     depends_on:
@@ -74,8 +77,8 @@ services:
       - REDIS_HOST=redis
       - REDIS_PORT=6379
       - PUBLIC_URL=http://worker-b:5000
-      - LLM_GATEWAY_URL=http://llm-gateway:7000
-      - LLM_PROVIDER=mock
+      - LLM_GATEWAY_URL=${LLM_GATEWAY_URL:-http://llm-gateway:7000}
+      - LLM_PROVIDER=${LLM_PROVIDER:-mock}
     ports:
       - "5002:5000"
     depends_on:
@@ -98,8 +101,8 @@ services:
       - REDIS_HOST=redis
       - REDIS_PORT=6379
       - PUBLIC_URL=http://worker-c:5000
-      - LLM_GATEWAY_URL=http://llm-gateway:7000
-      - LLM_PROVIDER=mock
+      - LLM_GATEWAY_URL=${LLM_GATEWAY_URL:-http://llm-gateway:7000}
+      - LLM_PROVIDER=${LLM_PROVIDER:-mock}
     ports:
       - "5003:5000"
     depends_on:
@@ -122,8 +125,8 @@ services:
       - REDIS_HOST=redis
       - REDIS_PORT=6379
       - PUBLIC_URL=http://worker-d:5000
-      - LLM_GATEWAY_URL=http://llm-gateway:7000
-      - LLM_PROVIDER=mock
+      - LLM_GATEWAY_URL=${LLM_GATEWAY_URL:-http://llm-gateway:7000}
+      - LLM_PROVIDER=${LLM_PROVIDER:-mock}
     ports:
       - "5004:5000"
     depends_on:
